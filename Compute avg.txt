@@ -1,0 +1,236 @@
+rm(list=ls(all=TRUE)) #clear all previous variables
+
+# Define weighted average function
+weighted_avg_n <- function(values, errors) {
+  weights <- 1 / (errors^2)
+  avg <- sum(values * weights) / sum(weights)
+  err <- sqrt(1 / sum(weights))
+  return(c(avg, err))
+}
+
+# Define parameter names
+params <- c("SWC", "NO_ppb", "NO2_ppb", "HONO_ppb", "NO_flux", "NO2_flux", "HONO_flux")
+
+A_vals <- matrix(c(
+  22.11, 28.08, 7.30, 5.44, 2.76, 0.71, 0.54,
+  22.04, 19.56, 3.00, 4.50, 1.92, 0.29, 0.44 
+), ncol = 7, byrow = TRUE)
+
+A_errs <- matrix(c(
+  0.14, 0.03, 0.06, 0.22, 0.003, 0.01, 0.02,
+  0.04, 0.10, 0.10, 0.001, 0.01, 0.01, 0.006
+), ncol = 7, byrow = TRUE)
+
+B_vals <- matrix(c(
+  22.66, 10.07, 2.67, 0.66, 1.00, 0.26, 0.06,
+  22.04, 9.80, 2.50, 0.60, 0.95, 0.24, 0.05
+), ncol = 7, byrow = TRUE)
+
+B_errs <- matrix(c(
+  0.21, 0.26, 0.22, 0.09, 0.03, 0.02, 0.01,
+  0.11, 0.25, 0.20, 0.08, 0.03, 0.02, 0.01
+), ncol = 7, byrow = TRUE)
+
+C_vals <- matrix(c(
+  22.14, 28.91, 5.97, 11.98, 2.84, 0.59, 1.17,
+  22.18, 32.80, 13.43, 9.90, 3.18, 1.32, 0.97  
+), ncol = 7, byrow = TRUE)
+
+C_errs <- matrix(c(
+  0.70, 0.70, 0.14, 0.19, 0.07, 0.01, 0.02,
+  0.40, 0.70, 0.30, 0.25, 0.06, 0.03, 0.02
+), ncol = 7, byrow = TRUE)
+
+D_vals <- matrix(c(
+  21.99, 4.28, 0.82, 0.17, 0.42, 0.08, 0.02,
+  21.12, 6.62, 4.99, 0.81, 0.65, 0.49, 0.08
+), ncol = 7, byrow = TRUE)
+
+D_errs <- matrix(c(
+  0.01, 0.28, 0.06, 0.02, 0.03, 0.002, 0.001,
+  0.13, 0.02, 0.12, 0.04, 0.002, 0.01, 0.004
+), ncol = 7, byrow = TRUE)
+
+E_vals <- matrix(c(
+  23.54, 21.50, 6.71, 4.28, 2.12, 0.66, 0.42,
+  23.77, 22.15, 6.20, 2.80, 2.18, 0.61, 0.28  
+), ncol = 7, byrow = TRUE)
+
+E_errs <- matrix(c(
+  0.16, 0.72, 0.15, 0.36, 0.07, 0.01, 0.04,
+  0.12, 0.58, 0.16, 0.37, 0.06, 0.02, 0.04
+), ncol = 7, byrow = TRUE)
+
+F_vals <- matrix(c(
+  22.11, 18.63, 3.86, 0.23, 1.83, 0.38, 0.02,
+  22.18, 27.23, 0.40, 33.71, 2.68, 0.03, 3.32
+), ncol = 7, byrow = TRUE)
+
+F_errs <- matrix(c(
+  0.01, 0.19, 0.04, 0.06, 0.02, 0.004, 0.01,
+  0.01, 0.1, 0.03, 0.24, 0.01, 0.002, 0.02  
+), ncol = 7, byrow = TRUE)
+
+G_vals <- matrix(c(
+  22.04, 7.56, 6.86, 2.45, 0.74, 0.68, 0.24,
+  22.24, 5.56, 0.82, 0.11, 0.55, 0.1, 0.01 
+), ncol = 7, byrow = TRUE)
+
+G_errs <- matrix(c(
+  0.17, 0.002, 0.01, 0.02, 0.002, 0.001, 0.002,
+  0.02, 0.01, 0.04, 0.02, 0.001, 0.003, 0.002
+), ncol = 7, byrow = TRUE)
+
+H_vals <- matrix(c(
+  22.00, 11.70, 2.23, 0.29, 1.15, 0.22, 0.03,
+  22.18, 12.52, 1.76, 2.02, 1.23, 0.17, 0.20
+), ncol = 7, byrow = TRUE)
+
+H_errs <- matrix(c(
+  0.21, 0.26, 0.22, 0.09, 0.03, 0.02, 0.01,
+  0.23, 0.50, 0.12, 0.08, 0.01, 0.01, 0.03
+), ncol = 7, byrow = TRUE)
+
+# Function to compute group results
+compute_group_avg <- function(values, errors, group_name) {
+  res <- t(mapply(weighted_avg_n, split(values, col(values)), split(errors, col(errors))))
+  df <- data.frame(
+    Group = group_name,
+    Parameter = params,
+    Weighted_Avg = round(res[, 1], 2),
+    Uncertainty = round(res[, 2], 2)
+  )
+  return(df)
+}
+
+# Compute and combine
+A_results <- compute_group_avg(A_vals, A_errs, "A")
+B_results <- compute_group_avg(B_vals, B_errs, "B")
+C_results <- compute_group_avg(C_vals, C_errs, "C")
+D_results <- compute_group_avg(D_vals, D_errs, "D")
+E_results <- compute_group_avg(E_vals, E_errs, "E")
+F_results <- compute_group_avg(B_vals, F_errs, "F")
+G_results <- compute_group_avg(A_vals, G_errs, "G")
+H_results <- compute_group_avg(B_vals, H_errs, "H")
+final_results <- rbind(A_results, B_results, C_results, D_results, E_results, F_results, G_results, H_results)
+
+# View results
+print(final_results)
+
+# Weighted average function
+weighted_avg_n <- function(values, errors) {
+  weights <- 1 / (errors^2)
+  avg <- sum(values * weights) / sum(weights)
+  err <- sqrt(1 / sum(weights))
+  return(c(avg, err))
+}
+
+# Parameter names
+params <- c("SWC", "NO_ppb", "NO2_ppb", "HONO_ppb", "NO_flux", "NO2_flux", "HONO_flux")
+target_params <- c("NO_ppb", "NO2_ppb", "HONO_ppb")  # for t-tests
+
+# Define values and errors (Groups A–H)
+# [Insert all your A_vals, A_errs, B_vals, ..., H_errs here — already defined in your message]
+
+# Function to compute weighted averages
+compute_group_avg <- function(values, errors, group_name) {
+  res <- t(mapply(weighted_avg_n, split(values, col(values)), split(errors, col(errors))))
+  df <- data.frame(
+    Group = group_name,
+    Parameter = params,
+    Weighted_Avg = round(res[, 1], 2),
+    Uncertainty = round(res[, 2], 2)
+  )
+  return(df)
+}
+
+# Paired t-test for duplicates
+check_duplicate_similarity <- function(values, group_name, param_names, target_params) {
+  keep_indices <- which(param_names %in% target_params)
+  
+  if (nrow(values) < 2) {
+    warning(paste("Group", group_name, "has fewer than 2 replicates. Skipping."))
+    return(NULL)
+  }
+  
+  t_results <- lapply(keep_indices, function(i) {
+    col_data <- values[, i]
+    
+    if (nrow(values) >= 2) {
+      # Do paired t-test between replicates
+      test <- t.test(values[, 1], values[, 2], paired = TRUE)
+      similar <- ifelse(test$p.value > 0.05, "Yes", "No")
+      return(data.frame(
+        Parameter = param_names[i],
+        P_Value = round(test$p.value, 4),
+        Statistically_Similar = similar
+      ))
+    } else {
+      return(data.frame(
+        Parameter = param_names[i],
+        P_Value = NA,
+        Statistically_Similar = "Not enough replicates"
+      ))
+    }
+  })
+  
+  df <- do.call(rbind, t_results)
+  df$Group <- group_name
+  df <- df[, c("Group", "Parameter", "P_Value", "Statistically_Similar")]
+  return(df)
+}
+
+avg_results <- list()
+ttest_results <- list()
+
+for (g in names(groups)) {
+  group <- groups[[g]]
+  avg_results[[g]] <- compute_group_avg(group$vals, group$errs, g)
+  ttest_result <- check_duplicate_similarity(group$vals, g, params, target_params)
+  if (!is.null(ttest_result)) {
+    ttest_results[[g]] <- ttest_result
+  }
+}
+
+# Combine and view results
+final_results <- do.call(rbind, avg_results)
+duplicate_tests <- do.call(rbind, ttest_results)
+
+print("Weighted Averages and Uncertainties:")
+print(final_results)
+
+print("T-Test Results for Selected Parameters (NO_ppb, NO2_ppb, HONO_ppb):")
+print(duplicate_tests)
+
+# Parameters of interest
+target_params <- c("NO_ppb", "NO2_ppb", "HONO_ppb")
+
+# Function to compute overall weighted average and uncertainty, excluding invalid values
+overall_weighted_avg <- function(values, errors) {
+  valid <- errors > 0 & !is.na(errors)
+  values <- values[valid]
+  errors <- errors[valid]
+  
+  if (length(values) == 0) return(c(NA, NA))
+  
+  weights <- 1 / (errors^2)
+  avg <- sum(values * weights) / sum(weights)
+  err <- sqrt(1 / sum(weights))
+  return(c(avg, err))
+}
+
+# Compute overall weighted averages only for the target parameters
+avg_results <- do.call(rbind, lapply(target_params, function(param) {
+  subset_df <- final_results[final_results$Parameter == param, ]
+  result <- overall_weighted_avg(subset_df$Weighted_Avg, subset_df$Uncertainty)
+  data.frame(
+    Parameter = param,
+    Overall_Weighted_Avg = round(result[1], 2),
+    Overall_Uncertainty = round(result[2], 2)
+  )
+}))
+
+# Print results
+print(avg_results)
+
+

@@ -1,0 +1,70 @@
+library(openair)
+library(readr)
+library(ggplot2)
+library(gridExtra)
+library(data.table)
+library(ggpubr)
+library(lubridate)
+library(dplyr)
+library(openxlsx)
+library(tidyr)
+library(purrr)
+
+# Clear environment
+rm(list=ls(all=TRUE)) 
+
+# Define custom SWC bins and labels
+bins <- seq(10, 30, by = 2) 
+labels <- paste(bins[-length(bins)], "-", bins[-1]) 
+
+# Read the data
+merge_soildata <- read.csv("C:/Users/shahm/OneDrive - my.yorku.ca/Desktop/Soil experiments/sample c/merge_soildata.csv")
+
+# Assign bins to SWC
+merge_soildata$SWC_bin <- cut(merge_soildata$SWC, breaks = bins, labels = labels, right = FALSE)
+
+# Define selected numeric columns
+selected_cols <- c("SWC_Avg", "Hourly_NO", "Hourly_NO2", "Hourly_HONO", 
+                   "NO_Flux_Avg", "NO2_Flux_Avg", "HONO_Flux_Avg", 
+                   "Integrated_NOFlux", "Integrated_NO2Flux", "Integrated_HONOFlux")
+
+# Calculate mean for numeric columns
+binned_summary <- aggregate(. ~ SWC_bin, data = merge_soildata[, c("SWC_bin", selected_cols)], 
+                            FUN = mean, na.rm = TRUE)
+
+# Calculate standard error for numeric columns
+binned_se <- aggregate(. ~ SWC_bin, data = merge_soildata[, c("SWC_bin", selected_cols)], 
+                       FUN = function(x) sd(x, na.rm = TRUE) / sqrt(sum(!is.na(x))))
+
+# Merge mean and standard error
+binned_summary <- merge(binned_summary, binned_se, by = "SWC_bin", suffixes = c("_mean", "_se"))
+
+# Save results
+write.csv(binned_summary, "C:/Users/shahm/OneDrive - my.yorku.ca/Desktop/binned_summary2.csv")
+
+# --- Pooled Binning (Chamber Manuscript) ---
+# Define SWC bins for pooled replicates
+# Define SWC bins for pooled replicates
+bins_pooled <- c(24, 20)
+labels_pooled <- c("24-20")
+merge_soildata1 <- read.csv("C:/Users/shahm/OneDrive - my.yorku.ca/Desktop/Soil experiments/sample c/merge_soildata.csv")
+
+# Assign bins to SWC
+merge_soildata1$SWC_bin <- cut(merge_soildata1$SWC, breaks = bins_pooled, labels = labels_pooled, right = FALSE)
+
+# Filter only the "25-20" bin
+filtered_data <- subset(merge_soildata1, SWC_bin == "24-20")
+
+# Calculate mean
+binned_summary_t <- aggregate(. ~ SWC_bin, data = filtered_data[, c("SWC_bin", selected_cols)], 
+                              FUN = mean, na.rm = TRUE)
+
+# Calculate standard error
+binned_se_total <- aggregate(. ~ SWC_bin, data = filtered_data[, c("SWC_bin", selected_cols)], 
+                             FUN = function(x) sd(x, na.rm = TRUE) / sqrt(sum(!is.na(x))))
+
+# Merge mean and standard error
+binned_summary_t <- merge(binned_summary_t, binned_se_total, by = "SWC_bin", suffixes = c("_mean", "_se"))
+
+# Save results
+write.csv(binned_summary_t, "C:/Users/shahm/OneDrive - my.yorku.ca/Desktop/binned_summary_C2.csv")

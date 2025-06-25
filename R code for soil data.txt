@@ -1,0 +1,229 @@
+library(openair)
+library(readr)
+library(ggplot2)
+library(gridExtra)
+library(data.table)
+library(ggpubr)
+library(lubridate)
+library(dplyr)
+library(openxlsx)
+library(tidyr)
+library(purrr)
+
+rm(list=ls(all=TRUE)) #clear all previous variables
+
+#set working directory
+setwd("E:/pooled R1")
+
+#import SWC data
+dat_1 <- read.csv("E:/pooled R1/FRMonitor_0072.log", sep = " ", header =F)
+dat_1 <- dplyr::select(dat_1,1,8)
+colnames(dat_1) <- c("epoch", "Voltage")
+
+dat_2 <- read.csv("E:/pooled R1/FRMonitor_0073.log", sep = " ", header =F)
+dat_2 <- dplyr::select(dat_2,1,8)
+colnames(dat_2) <- c("epoch", "Voltage")
+
+dat_3 <- read.csv("E:/pooled R1/FRMonitor_0074.log", sep = " ", header =F)
+dat_3 <- dplyr::select(dat_3,1,8)
+colnames(dat_3) <- c("epoch", "Voltage")
+
+dat_4 <- read.csv("E:/pooled R1/FRMonitor_0075.log", sep = " ", header =F)
+dat_4 <- dplyr::select(dat_4,1,8)
+colnames(dat_4) <- c("epoch", "Voltage")
+
+dat_5<- read.csv("E:/pooled R1/FRMonitor_0076.log", sep = " ", header =F)
+dat_5 <- dplyr::select(dat_5,1,8)
+colnames(dat_5) <- c("epoch", "Voltage")
+
+dat_6 <- read.csv("E:/pooled R1/FRMonitor_0077.log", sep = " ", header =F)
+dat_6 <- dplyr::select(dat_6,1,8)
+colnames(dat_6) <- c("epoch", "Voltage")
+
+#making swc dataframe for posixct and finalize
+swc <- rbind(dat_1, dat_2, dat_3, dat_4, dat_5, dat_6)
+
+swc<- rbind(dat_1, dat_2, dat_3, dat_4, dat_5, dat_6) %>%
+  mutate(swc= 100*( (1.611e-09 * (Voltage^3) - 1.169e-05 * (Voltage^2) + 2.841e-02 * Voltage - 22.86)))
+
+#Conversion to Posixct
+swc$date = (swc$epoch/86400)+25569+(-4/24)
+swc$date <- convertToDateTime(swc$date)
+
+#average to 1-minute
+swc_min1<-swc %>% mutate(minute = floor_date(date, unit = "minute")) %>% 
+  group_by(minute) %>%
+  summarise(swc_min= mean(swc)) 
+
+# Convert swc_min1 to data.table
+setDT(swc_min1)
+
+#Load the data with correct date time format
+setwd("E:/pooled R1")
+min_data1 <- read_csv("20240807.csv", col_types = cols(date = col_datetime(format = "%Y-%m-%d %H:%M")))
+colnames(min_data1) <- c("date", "NOx", "NO2","NO")
+
+# Convert swc_min1 to data.table
+setDT(min_data1)
+
+# Ensure columns are the same type
+min_data1[, date := as.POSIXct(date)]
+swc_min1[, minute := as.POSIXct(minute)]
+
+joined_data <- swc_min1[min_data1, on = .(minute = date)]
+
+#To add a new column for correcting NO and NOx
+head(joined_data)
+colnames(joined_data)
+joined_data$NO_corrected <- joined_data$NO/0.6
+joined_data$NOx_corrected <- joined_data$NOx/0.6
+
+#To add a new column for correcting NO2
+head(joined_data)
+colnames(joined_data)
+joined_data$NO2_corrected <- joined_data$NOx_corrected-joined_data$NO_corrected
+
+# Check column names to inspect for NAs or invalid characters
+colnames(joined_data)
+
+#Load the valve data 
+valve_data<-read_delim("Danial_F_2024_08_07-05_20_01.txt", 
+                       delim = "\t", escape_double = FALSE, 
+                       col_types = cols(DateTime = col_datetime(format = "%Y-%m-%d %H:%M:%S")), 
+                       trim_ws = TRUE)
+valve_data<- valve_data %>% select(V0,V1,Elapsed,DateTime)  %>% rename(date = DateTime)
+#Averaging from 1 sec to 1 min
+valve_data_1min<-timeAverage(valve_data, avg.time = "1 min") 
+valve_data_1min$V0<- round(valve_data_1min$V0)
+
+# Rename "minute" to "date" in joined_data
+colnames(joined_data)[colnames(joined_data) == "minute"] <- "date"
+
+#merging with measurements
+merge_all <- merge(joined_data, valve_data_1min, by = "date")
+
+# Create new columns with NA values
+merge_all$HONO <- NA  
+merge_all$NO <- NA
+merge_all$NO2 <- NA
+merge_all$SWC <- NA
+
+# Loop through the dataframe in 10-minute intervals
+for (i in seq(1, nrow(merge_all), by = 10)) {
+  if (i + 9 <= nrow(merge_all)) {
+    # Select the first 5-minute points (valve V0 == 0)
+    avg_0 <- mean(merge_all$NO2_corrected[i:(i+4)][merge_all$V0[i:(i+4)] == 0], na.rm = TRUE)
+    
+    # Select the second 5-minute points (valve V0 == 1)
+    avg_1 <- mean(merge_all$NO2_corrected[(i+5):(i+9)][merge_all$V0[(i+5):(i+9)] == 1], na.rm = TRUE)
+    avg_2 <- mean(merge_all$NO_corrected[(i+5):(i+9)][merge_all$V0[(i+5):(i+9)] == 1], na.rm = TRUE)
+    avg_3 <- mean(merge_all$swc_min[(i+5):(i+9)][merge_all$V0[(i+5):(i+9)] == 1], na.rm = TRUE)
+    
+    # Calculate values for the 10-minute interval
+    hono_value <- avg_1 - avg_0 
+    no2_value <- avg_0
+    no_value <- avg_2
+    swc_value <- avg_3
+    
+    # Assign values to the last row of the 10-minute block, removing NA
+    merge_all$HONO[i+9] <- ifelse(is.nan(hono_value) | is.na(hono_value), 0, hono_value)
+    merge_all$NO[i+9] <- ifelse(is.nan(no_value) | is.na(no_value), 0, no_value)
+    merge_all$NO2[i+9] <- ifelse(is.nan(no2_value) | is.na(no2_value), 0, no2_value)
+    merge_all$SWC[i+9] <- ifelse(is.nan(swc_value) | is.na(swc_value), 0, swc_value)  
+  }
+}
+
+# Select and rename relevant columns, keeping only non-NA rows
+merge_soildata <- merge_all %>%
+  filter(!is.na(HONO) & !is.na(NO) & !is.na(NO2) & !is.na(SWC)) %>%
+  select(Date_Time = date, SWC = swc_min, NO = NO, NO2 = NO2, HONO = HONO)
+
+#Constants
+# Chamber and experimental parameters
+Q <- 0.0036  # Flow rate in m^3/min
+A <- 0.021  # Chamber surface area in m²
+V <- 22.4  # Volume of air in L/mol
+#  MN/Vm = 14.01/24.4 = 0.574 µgN/m3/ppb
+factor_ppb_to_ugN <- 0.574  # Conversion factor from ppb to µgN/m³
+
+# Fixed ambient concentrations in ppb (change these values if needed)
+ambient_NO_ppb <- 0
+ambient_NO2_ppb <- 1
+
+# Calculate flux (Fcham) for NO, NO2, HONO
+merge_soildata <- merge_soildata %>%
+  mutate(
+    NO_ugN_m3 = (NO - ambient_NO_ppb) * factor_ppb_to_ugN,
+    NO2_ugN_m3 = (NO2 - ambient_NO2_ppb) * factor_ppb_to_ugN,
+    HONO_ugN_m3 = HONO * factor_ppb_to_ugN,
+    NO_Flux = (NO_ugN_m3 * Q) / A,  # Flux calculation
+    NO2_Flux = (NO2_ugN_m3 * Q) / A,
+    HONO_Flux = (HONO_ugN_m3 * Q) / A
+  )
+
+# Function to integrate flux using the trapezoidal rule
+integrate_flux_trap <- function(time, flux) {
+  if (length(time) < 2) return(NA)
+  sum(as.numeric(diff(time)) * (head(flux, -1) + tail(flux, -1)) / 2)
+}
+
+# Adjust flux for incomplete intervals (at both the beginning and end)
+merge_soildata <- merge_soildata %>%
+  arrange(Date_Time) %>%
+  mutate(Time_Diff = as.numeric(difftime(Date_Time, lag(Date_Time), units = "mins")),
+         Time_Diff = replace_na(Time_Diff, 0)) %>%
+  mutate(
+    NO_Flux = ifelse(Time_Diff < 1, NO_Flux * Time_Diff, NO_Flux),
+    NO2_Flux = ifelse(Time_Diff < 1, NO2_Flux * Time_Diff, NO2_Flux),
+    HONO_Flux = ifelse(Time_Diff < 1, HONO_Flux * Time_Diff, HONO_Flux)
+  )
+
+# Ensure Date_Time is in POSIXct format
+merge_soildata <- merge_soildata %>%
+  mutate(Date_Time = as.POSIXct(Date_Time, format = "%Y-%m-%d %H:%M:%S", tz = "UTC"))
+
+# Group data by 1-hour intervals and compute integrated flux
+merge_soildata_hourly <- merge_soildata %>%
+  mutate(Date_Time_Hourly = format(floor_date(Date_Time, "hour"), "%Y-%m-%d %H:%M:%S")) %>%
+  group_by(Date_Time_Hourly) %>%
+  summarise(
+    Integrated_NOFlux = if (all(is.na(NO_Flux))) NA else as.numeric(integrate_flux_trap(Date_Time[!is.na(NO_Flux)], NO_Flux[!is.na(NO_Flux)])) * 60,
+    Integrated_NO2Flux = if (all(is.na(NO2_Flux))) NA else as.numeric(integrate_flux_trap(Date_Time[!is.na(NO2_Flux)], NO2_Flux[!is.na(NO2_Flux)])) * 60,
+    Integrated_HONOFlux = if (all(is.na(HONO_Flux))) NA else as.numeric(integrate_flux_trap(Date_Time[!is.na(HONO_Flux)], HONO_Flux[!is.na(HONO_Flux)])) * 60,
+    Hourly_NO = mean(NO, na.rm = TRUE),
+    Hourly_NO2 = mean(NO2, na.rm = TRUE),
+    Hourly_HONO = mean(HONO, na.rm = TRUE)
+  )  # Convert to µgN/m²
+
+# Function to calculate hourly mean and rename column based on the flux type
+calculate_hourly_mean <- function(data, time_col, flux_col, new_col_name) {
+  data %>%
+    mutate(Date_Time_Hourly = format(floor_date(.data[[time_col]], "hour"), "%Y-%m-%d %H:%M:%S")) %>%
+    group_by(Date_Time_Hourly) %>%
+    summarise(!!new_col_name := mean(.data[[flux_col]], na.rm = TRUE), .groups = "drop")
+}
+
+# Compute hourly averages with proper column names
+NO_Flux_Avg <- calculate_hourly_mean(merge_soildata, "Date_Time", "NO_Flux", "NO_Flux_Avg")
+NO2_Flux_Avg <- calculate_hourly_mean(merge_soildata, "Date_Time", "NO2_Flux", "NO2_Flux_Avg")
+HONO_Flux_Avg <- calculate_hourly_mean(merge_soildata, "Date_Time", "HONO_Flux", "HONO_Flux_Avg")
+SWC_Avg <- calculate_hourly_mean(merge_soildata, "Date_Time", "SWC", "SWC_Avg")
+
+# Merge all data frames by "Date_Time_Hourly" without removing integrated flux columns
+flux_list <- list(
+  NO_Flux_Avg,
+  NO2_Flux_Avg,
+  HONO_Flux_Avg,
+  SWC_Avg
+)
+
+merge_soildata_hourly <- reduce(flux_list, left_join, by = "Date_Time_Hourly") %>%
+  left_join(merge_soildata_hourly, by = "Date_Time_Hourly") %>%
+  distinct(Date_Time_Hourly, .keep_all = TRUE)
+
+
+View(merge_soildata_hourly)
+
+# Save result to a CSV file
+write.csv(merge_soildata,"soildata.csv")   
+write_csv(merge_soildata_hourly, "Integrated_Avg_Flux_Hourly.csv")
