@@ -1,7 +1,7 @@
 # Soil-Data-Analyzer
+In this section of the soil analyzer, you will be able to process the data 
 
-
-## Notice
+## 
 
 
 ## Tech Stack
