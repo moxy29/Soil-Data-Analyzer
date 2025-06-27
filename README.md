@@ -1,5 +1,5 @@
 # Soil-Data-Analyzer
-In this section of the soil analyzer, you will be able to process the data 
+In this section of the soil data analyzer, you will be able to process the data using Python and R Studio.
 
 ## Coordinate generator 
 This Python script was made to generate coordinates for soil sample collection across an agricultural field using a random sampling technique. The agricultural field (43°09'36.0"N, 81°55'48.0"W; 180 m × 480 m) was divided into 8 grids (each of 120 m × 90 m) based on user-defined dimensions. Random 4 coordinates were generated within each grid, and the resulting coordinates.
